@@ -42,6 +42,10 @@ struct HomeView: View {
     @State private var activeAchievement: Achievement? // Rozet tiklaninca acilir.
     @State private var activeHealthMilestone: HealthMilestone? // Saglik kartina tiklaninca acilir.
     @State private var completedMissions: Set<String> = [] // Tamamlanan gorevler.
+    @State private var showBreathingExercise = false // Nefes egzersizi sheet.
+    @State private var showAllVideos = false // Tum videolar sheet.
+    @State private var showAllAchievements = false // Tum basarilar sheet.
+    @State private var showMotivationTip = false // Gunluk motivasyon sheet.
 
     var body: some View {
         ZStack {
@@ -102,6 +106,28 @@ struct HomeView: View {
         .sheet(item: $activeHealthMilestone) { milestone in
             HealthMilestoneSheetView(milestone: milestone)
         }
+        .sheet(isPresented: $showBreathingExercise) {
+            BreathingExerciseSheet()
+        }
+        .sheet(isPresented: $showAllVideos) {
+            AllVideosSheet(clips: sampleClips, onSelectClip: { clip in
+                showAllVideos = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    activeClip = clip
+                }
+            })
+        }
+        .sheet(isPresented: $showAllAchievements) {
+            AllAchievementsSheet(achievements: achievementItems, onSelectAchievement: { achievement in
+                showAllAchievements = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    activeAchievement = achievement
+                }
+            })
+        }
+        .sheet(isPresented: $showMotivationTip) {
+            DailyMotivationSheet()
+        }
     }
 }
 
@@ -152,6 +178,21 @@ private extension HomeView {
                     .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
             }
             Spacer()
+            
+            // Gunluk motivasyon butonu
+            Button {
+                showMotivationTip = true
+            } label: {
+                Image(systemName: "lightbulb.fill")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
+                    .frame(width: 40, height: 40)
+                    .background(Color(red: 1.00, green: 0.74, blue: 0.38).opacity(0.15))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Gunluk ipucu")
+            
             Button {
                 onLogout() // Cikis yap.
             } label: {
@@ -161,8 +202,6 @@ private extension HomeView {
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.12))
                     .clipShape(Circle())
-                    // Baseline yerine ikonun merkezini hizala.
-                    .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Cikis")
@@ -301,11 +340,14 @@ private extension HomeView {
                     .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 Spacer()
-                Text("Hepsini gor")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                    // Baseline'i hizalamak icin hafif asagi cekiyoruz.
-                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] + 2 }
+                Button {
+                    showAllVideos = true
+                } label: {
+                    Text("Hepsini gor")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                }
+                .buttonStyle(.plain)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -329,14 +371,19 @@ private extension HomeView {
                 .foregroundColor(.white)
 
             VStack(spacing: HomeDesign.insetLarge - 4) {
-                ForEach(quickActionItems) { action in
+                ForEach(Array(quickActionItems.enumerated()), id: \.element.id) { index, action in
                     ActionRow(
                         icon: action.icon,
                         title: action.title,
                         subtitle: action.subtitle,
                         accent: action.accent
                     ) {
-                        activeAction = action // Hangi eyleme tiklandiysa sheet ac.
+                        if index == 0 {
+                            // Nefes egzersizi - ozel sheet ac
+                            showBreathingExercise = true
+                        } else {
+                            activeAction = action
+                        }
                     }
                 }
             }
@@ -384,9 +431,18 @@ private extension HomeView {
                     .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 Spacer()
-                Text("\(achievementItems.filter { $0.isUnlocked }.count)/\(achievementItems.count)")
+                Button {
+                    showAllAchievements = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("\(achievementItems.filter { $0.isUnlocked }.count)/\(achievementItems.count)")
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                    }
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                }
+                .buttonStyle(.plain)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -421,12 +477,34 @@ private extension HomeView {
 
     // MARK: - Gunluk Gorevler
     var dailyMissionsSection: some View {
-        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
+        let totalXP = dailyMissions.reduce(0) { sum, mission in
+            completedMissions.contains(mission.id.uuidString) ? sum + mission.xp : sum
+        }
+        let maxXP = dailyMissions.reduce(0) { $0 + $1.xp }
+        
+        return VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
             HStack {
                 Text("Gunluk Gorevler")
                     .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 Spacer()
+                
+                // XP gostergesi
+                HStack(spacing: 6) {
+                    Image(systemName: "star.fill")
+                        .font(.caption)
+                        .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
+                    Text("\(totalXP)/\(maxXP) XP")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, HomeDesign.insetMedium)
+                .padding(.vertical, HomeDesign.insetSmall - 2)
+                .background(
+                    Capsule()
+                        .fill(Color(red: 1.00, green: 0.74, blue: 0.38).opacity(0.2))
+                )
+                
                 Text("\(completedMissions.count)/\(dailyMissions.count)")
                     .font(.caption.weight(.bold))
                     .foregroundColor(.white)
@@ -453,6 +531,31 @@ private extension HomeView {
                         }
                     }
                 }
+            }
+            
+            // Tum gorevler tamamlaninca tebrik
+            if completedMissions.count == dailyMissions.count {
+                HStack {
+                    Image(systemName: "party.popper.fill")
+                        .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
+                    Text("Tebrikler! Bugunun tum gorevlerini tamamladin!")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(HomeDesign.insetMedium)
+                .frame(maxWidth: .infinity)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.00, green: 0.74, blue: 0.38).opacity(0.2),
+                            Color(red: 0.36, green: 0.84, blue: 0.65).opacity(0.2)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+                .transition(.scale.combined(with: .opacity))
             }
         }
     }
@@ -1254,6 +1357,555 @@ private struct HealthMilestoneSheetView: View {
             )
             .ignoresSafeArea()
         )
+    }
+}
+
+// MARK: - Nefes Egzersizi Sheet
+private struct BreathingExerciseSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var phase: BreathPhase = .ready
+    @State private var currentRound = 0
+    @State private var circleScale: CGFloat = 0.6
+    @State private var timer: Timer?
+    
+    enum BreathPhase: String {
+        case ready = "Hazir misin?"
+        case inhale = "Nefes Al"
+        case hold = "Tut"
+        case exhale = "Nefes Ver"
+        case complete = "Tamamlandi!"
+    }
+    
+    let totalRounds = 5
+    let inhaleDuration: Double = 3
+    let holdDuration: Double = 4
+    let exhaleDuration: Double = 5
+    
+    var body: some View {
+        VStack(spacing: HomeDesign.insetXL) {
+            Capsule()
+                .fill(Color.gray.opacity(0.3))
+                .frame(width: 48, height: 6)
+            
+            Text("Nefes Egzersizi")
+                .font(.title2.weight(.bold))
+                .foregroundColor(.white)
+            
+            Text("3-4-5 Teknigi")
+                .font(.subheadline)
+                .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+            
+            Spacer()
+            
+            // Nefes animasyon dairesi
+            ZStack {
+                // Dis halka
+                Circle()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 8)
+                    .frame(width: 200, height: 200)
+                
+                // Animasyonlu ic daire
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                phaseColor.opacity(0.6),
+                                phaseColor.opacity(0.2)
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 100
+                        )
+                    )
+                    .frame(width: 200, height: 200)
+                    .scaleEffect(circleScale)
+                
+                // Faz yazisi
+                VStack(spacing: 8) {
+                    Text(phase.rawValue)
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(.white)
+                    
+                    if phase != .ready && phase != .complete {
+                        Text("Tur \(currentRound)/\(totalRounds)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Color.white.opacity(0.7))
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // Kontrol butonlari
+            if phase == .ready {
+                Button {
+                    startExercise()
+                } label: {
+                    HStack {
+                        Image(systemName: "play.fill")
+                        Text("Baslat")
+                    }
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, HomeDesign.insetMedium)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.36, green: 0.84, blue: 0.65),
+                                Color(red: 0.35, green: 0.75, blue: 1.00)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            } else if phase == .complete {
+                VStack(spacing: HomeDesign.insetMedium) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color(red: 0.36, green: 0.84, blue: 0.65))
+                        Text("Harika! Kendini daha iyi hissedeceksin.")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Button {
+                        phase = .ready
+                        currentRound = 0
+                        circleScale = 0.6
+                    } label: {
+                        Text("Tekrar Yap")
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, HomeDesign.insetMedium)
+                            .background(Color.white.opacity(HomeDesign.fillOpacity))
+                            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            
+            Button("Kapat") {
+                timer?.invalidate()
+                dismiss()
+            }
+            .font(.headline.weight(.semibold))
+            .padding(.horizontal, HomeDesign.insetXL - 4)
+            .padding(.vertical, HomeDesign.insetMedium)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+            .foregroundColor(.white)
+        }
+        .padding(HomeDesign.insetXL)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.09, blue: 0.20),
+                    Color(red: 0.04, green: 0.06, blue: 0.13)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+        .onDisappear {
+            timer?.invalidate()
+        }
+    }
+    
+    var phaseColor: Color {
+        switch phase {
+        case .ready: return Color(red: 0.35, green: 0.75, blue: 1.00)
+        case .inhale: return Color(red: 0.36, green: 0.84, blue: 0.65)
+        case .hold: return Color(red: 1.00, green: 0.74, blue: 0.38)
+        case .exhale: return Color(red: 0.99, green: 0.52, blue: 0.28)
+        case .complete: return Color(red: 0.36, green: 0.84, blue: 0.65)
+        }
+    }
+    
+    func startExercise() {
+        currentRound = 1
+        runBreathCycle()
+    }
+    
+    func runBreathCycle() {
+        // Nefes al
+        phase = .inhale
+        withAnimation(.easeInOut(duration: inhaleDuration)) {
+            circleScale = 1.0
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + inhaleDuration) {
+            // Tut
+            phase = .hold
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration) {
+                // Nefes ver
+                phase = .exhale
+                withAnimation(.easeInOut(duration: exhaleDuration)) {
+                    circleScale = 0.6
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + exhaleDuration) {
+                    if currentRound < totalRounds {
+                        currentRound += 1
+                        runBreathCycle()
+                    } else {
+                        phase = .complete
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Tum Videolar Sheet
+private struct AllVideosSheet: View {
+    let clips: [Clip]
+    var onSelectClip: (Clip) -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack(spacing: HomeDesign.insetLarge) {
+            Capsule()
+                .fill(Color.gray.opacity(0.3))
+                .frame(width: 48, height: 6)
+            
+            HStack {
+                Text("Tum Videolar")
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Text("\(clips.count) video")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+            }
+            .padding(.horizontal)
+            
+            ScrollView {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: HomeDesign.insetMedium),
+                    GridItem(.flexible(), spacing: HomeDesign.insetMedium)
+                ], spacing: HomeDesign.insetMedium) {
+                    ForEach(clips) { clip in
+                        Button {
+                            onSelectClip(clip)
+                        } label: {
+                            VStack(alignment: .leading, spacing: HomeDesign.insetSmall) {
+                                RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: clip.gradient,
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(height: 100)
+                                    .overlay(
+                                        VStack {
+                                            Image(systemName: "play.circle.fill")
+                                                .font(.title.weight(.bold))
+                                                .foregroundColor(.white)
+                                            Text(clip.duration)
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundColor(.white)
+                                        }
+                                    )
+                                
+                                Text(clip.title)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
+            Button("Kapat") {
+                dismiss()
+            }
+            .font(.headline.weight(.semibold))
+            .padding(.horizontal, HomeDesign.insetXL - 4)
+            .padding(.vertical, HomeDesign.insetMedium)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+            .foregroundColor(.white)
+        }
+        .padding(.top, HomeDesign.insetMedium)
+        .padding(.bottom, HomeDesign.insetXL)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.09, blue: 0.20),
+                    Color(red: 0.04, green: 0.06, blue: 0.13)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+    }
+}
+
+// MARK: - Tum Basarilar Sheet
+private struct AllAchievementsSheet: View {
+    let achievements: [Achievement]
+    var onSelectAchievement: (Achievement) -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var unlockedCount: Int {
+        achievements.filter { $0.isUnlocked }.count
+    }
+    
+    var body: some View {
+        VStack(spacing: HomeDesign.insetLarge) {
+            Capsule()
+                .fill(Color.gray.opacity(0.3))
+                .frame(width: 48, height: 6)
+            
+            HStack {
+                Text("Basarilarim")
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+                HStack(spacing: 4) {
+                    Image(systemName: "trophy.fill")
+                        .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
+                    Text("\(unlockedCount)/\(achievements.count)")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.white)
+                }
+            }
+            .padding(.horizontal)
+            
+            // Ilerleme cubugu
+            VStack(alignment: .leading, spacing: HomeDesign.insetSmall) {
+                ProgressView(value: Double(unlockedCount), total: Double(achievements.count))
+                    .tint(Color(red: 1.00, green: 0.74, blue: 0.38))
+                Text("%\(Int(Double(unlockedCount) / Double(achievements.count) * 100)) tamamlandi")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+            }
+            .padding(.horizontal)
+            
+            ScrollView {
+                VStack(spacing: HomeDesign.insetMedium) {
+                    ForEach(achievements) { achievement in
+                        Button {
+                            onSelectAchievement(achievement)
+                        } label: {
+                            HStack(spacing: HomeDesign.insetMedium) {
+                                ZStack {
+                                    Circle()
+                                        .fill(achievement.isUnlocked ? achievement.color.opacity(0.25) : Color.white.opacity(0.08))
+                                        .frame(width: 50, height: 50)
+                                    
+                                    Image(systemName: achievement.icon)
+                                        .font(.title3.weight(.bold))
+                                        .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.4))
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(achievement.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.5))
+                                    
+                                    Text(achievement.description)
+                                        .font(.caption)
+                                        .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                                        .lineLimit(2)
+                                    
+                                    // Mini ilerleme cubugu
+                                    ProgressView(value: achievement.progress)
+                                        .tint(achievement.color)
+                                }
+                                
+                                Spacer()
+                                
+                                if achievement.isUnlocked {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .foregroundColor(achievement.color)
+                                        .font(.title3)
+                                } else {
+                                    Text("%\(Int(achievement.progress * 100))")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(Color.white.opacity(0.5))
+                                }
+                            }
+                            .padding(HomeDesign.insetMedium)
+                            .background(Color.white.opacity(HomeDesign.fillOpacity))
+                            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
+            Button("Kapat") {
+                dismiss()
+            }
+            .font(.headline.weight(.semibold))
+            .padding(.horizontal, HomeDesign.insetXL - 4)
+            .padding(.vertical, HomeDesign.insetMedium)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+            .foregroundColor(.white)
+        }
+        .padding(.top, HomeDesign.insetMedium)
+        .padding(.bottom, HomeDesign.insetXL)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.09, blue: 0.20),
+                    Color(red: 0.04, green: 0.06, blue: 0.13)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+    }
+}
+
+// MARK: - Gunluk Motivasyon Sheet
+private struct DailyMotivationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var currentTipIndex = 0
+    
+    let tips = [
+        (icon: "flame.fill", title: "Kraving 90 saniye surer", message: "Sigara istegi bir dalga gibi gelir ve gecer. Su ic, derin nefes al ve dalganin gecmesini izle. Yapabilirsin!", color: Color(red: 0.99, green: 0.52, blue: 0.28)),
+        (icon: "heart.fill", title: "Vucudun iyilesiyor", message: "Her sigara icmedigin dakika vucudun kendini onariyor. 20 dakikada kan basincin normale doner!", color: Color(red: 0.99, green: 0.52, blue: 0.28)),
+        (icon: "banknote.fill", title: "Cebinde para kaliyor", message: "Her paket almadığinda ortalama 100 TL tasarruf ediyorsun. Ayda 3000 TL'ye kadar biriktirebilirsin!", color: Color(red: 0.36, green: 0.84, blue: 0.65)),
+        (icon: "lungs.fill", title: "Nefes al, rahatla", message: "Stresli hissettiginde 3-4-5 tekniğini dene: 3 sn nefes al, 4 sn tut, 5 sn ver. 5 kez tekrarla.", color: Color(red: 0.35, green: 0.75, blue: 1.00)),
+        (icon: "figure.walk", title: "Hareket et", message: "Sigara istegi geldiginde 5 dakika yuru. Fiziksel aktivite beyindeki odul merkezini uyarir ve istegi azaltir.", color: Color(red: 0.80, green: 0.68, blue: 1.00))
+    ]
+    
+    var currentTip: (icon: String, title: String, message: String, color: Color) {
+        tips[currentTipIndex]
+    }
+    
+    var body: some View {
+        VStack(spacing: HomeDesign.insetXL) {
+            Capsule()
+                .fill(Color.gray.opacity(0.3))
+                .frame(width: 48, height: 6)
+            
+            Text("Gunun Ipucu")
+                .font(.title2.weight(.bold))
+                .foregroundColor(.white)
+            
+            Spacer()
+            
+            // Ipucu karti
+            VStack(spacing: HomeDesign.insetLarge) {
+                ZStack {
+                    Circle()
+                        .fill(currentTip.color.opacity(0.2))
+                        .frame(width: 80, height: 80)
+                    
+                    Image(systemName: currentTip.icon)
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(currentTip.color)
+                }
+                
+                Text(currentTip.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                
+                Text(currentTip.message)
+                    .font(.body)
+                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .padding(HomeDesign.insetXL)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
+                    .stroke(currentTip.color.opacity(0.3), lineWidth: 1)
+            )
+            
+            // Ipucu navigasyonu
+            HStack(spacing: HomeDesign.insetSmall) {
+                ForEach(0..<tips.count, id: \.self) { index in
+                    Circle()
+                        .fill(index == currentTipIndex ? currentTip.color : Color.white.opacity(0.3))
+                        .frame(width: 8, height: 8)
+                }
+            }
+            
+            HStack(spacing: HomeDesign.insetMedium) {
+                Button {
+                    withAnimation {
+                        currentTipIndex = (currentTipIndex - 1 + tips.count) % tips.count
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(HomeDesign.fillOpacity))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    withAnimation {
+                        currentTipIndex = (currentTipIndex + 1) % tips.count
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(HomeDesign.fillOpacity))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            
+            Spacer()
+            
+            Button("Kapat") {
+                dismiss()
+            }
+            .font(.headline.weight(.semibold))
+            .padding(.horizontal, HomeDesign.insetXL - 4)
+            .padding(.vertical, HomeDesign.insetMedium)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
+            .foregroundColor(.white)
+        }
+        .padding(HomeDesign.insetXL)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.09, blue: 0.20),
+                    Color(red: 0.04, green: 0.06, blue: 0.13)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+        .onAppear {
+            // Her acilista rastgele bir ipucu goster
+            currentTipIndex = Int.random(in: 0..<tips.count)
+        }
     }
 }
 
