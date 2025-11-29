@@ -1,0 +1,55 @@
+appId: codeks.codeks
+---
+- launchApp
+# Login Flow (if not already logged in, but we'll assume fresh start or handle it)
+- runFlow: login.yaml
+
+# --- Home View Visual Audit ---
+
+# 1. Hero Card Interaction
+- scrollUntilVisible:
+    element: "Gunluk Egitim"
+    direction: DOWN
+- tapOn: "Izle"
+- assertVisible: "Video yakinda" # Check Video Sheet Title
+- tapOn: "Kapat"
+
+- tapOn: "Dinle"
+- assertVisible: "Sesli sakinlesme" # Check Audio Sheet Title
+- tapOn: "Kapat"
+
+# 2. Mini Reels Interaction
+- scrollUntilVisible:
+    element: "Kisa Videolar"
+    direction: DOWN
+- tapOn: "5 sn nefes ile sakinles" # Tap first video
+- assertVisible: "5 sn nefes ile sakinles" # Check Sheet
+- tapOn: "Kapat"
+
+# 3. Quick Actions Interaction
+- scrollUntilVisible:
+    element: "Hizli eylemler"
+    direction: DOWN
+- tapOn: "Nefes egzersizi baslat"
+- assertVisible: "Nefes egzersizi baslat" # Check Sheet
+- tapOn: "Kapat"
+
+- tapOn: "Kraving yardimi"
+- assertVisible: "Kraving yardimi"
+- tapOn: "Kapat"
+
+# 4. Progress Row Interaction
+- scrollUntilVisible:
+    element: "Bugun"
+    direction: DOWN
+- tapOn: "Duman yok"
+- assertVisible: "Detay: Duman yok"
+- tapOn: "Kapat"
+
+- tapOn: "Tasarruf"
+- assertVisible: "Detay: Tasarruf"
+- tapOn: "Kapat"
+
+- tapOn: "Mood"
+- assertVisible: "Detay: Mood"
+- tapOn: "Kapat"
