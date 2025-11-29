@@ -39,13 +39,6 @@ struct HomeView: View {
     @State private var activeAction: QuickAction? // Hizli eylem tiklaninca acilir.
     @State private var activeStat: StatInfo? // Kart tiklaninca acilir.
     @State private var activeClip: Clip? // Kisa video tiklaninca acilir.
-    @State private var activeAchievement: Achievement? // Rozet tiklaninca acilir.
-    @State private var activeHealthMilestone: HealthMilestone? // Saglik kartina tiklaninca acilir.
-    @State private var completedMissions: Set<String> = [] // Tamamlanan gorevler.
-    @State private var showBreathingExercise = false // Nefes egzersizi sheet.
-    @State private var showAllVideos = false // Tum videolar sheet.
-    @State private var showAllAchievements = false // Tum basarilar sheet.
-    @State private var showMotivationTip = false // Gunluk motivasyon sheet.
 
     var body: some View {
         ZStack {
@@ -57,10 +50,10 @@ struct HomeView: View {
                     miniReels // Saga kayan kucuk videolar.
                     quickActions // Kullaniciya hizli yardim butonlari.
                     progressRow // Gunluk ilerleme bilgisi.
-                    achievementsSection // Basari rozetleri.
-                    healthTimelineSection // Saglik iyilesmeleri.
-                    dailyMissionsSection // Gunluk gorevler.
-                    weeklyProgressSection // Haftalik ilerleme.
+                    weeklyCalendar // Haftalik basari takvimi.
+                    healthTimeline // Saglik iyilesme zaman cizelgesi.
+                    achievementBadges // Basari rozetleri.
+                    motivationCard // Gunluk motivasyon karti.
                 }
                 .padding(.horizontal, HomeDesign.screenHInset)
                 .padding(.top, HomeDesign.screenTop)
@@ -99,34 +92,6 @@ struct HomeView: View {
                 title: clip.title,
                 message: "Sure: \(clip.duration). Bu kisa videonun gorseli su an sahte, ileride oynatici olacak."
             )
-        }
-        .sheet(item: $activeAchievement) { achievement in
-            AchievementSheetView(achievement: achievement)
-        }
-        .sheet(item: $activeHealthMilestone) { milestone in
-            HealthMilestoneSheetView(milestone: milestone)
-        }
-        .sheet(isPresented: $showBreathingExercise) {
-            BreathingExerciseSheet()
-        }
-        .sheet(isPresented: $showAllVideos) {
-            AllVideosSheet(clips: sampleClips, onSelectClip: { clip in
-                showAllVideos = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    activeClip = clip
-                }
-            })
-        }
-        .sheet(isPresented: $showAllAchievements) {
-            AllAchievementsSheet(achievements: achievementItems, onSelectAchievement: { achievement in
-                showAllAchievements = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    activeAchievement = achievement
-                }
-            })
-        }
-        .sheet(isPresented: $showMotivationTip) {
-            DailyMotivationSheet()
         }
     }
 }
@@ -178,21 +143,6 @@ private extension HomeView {
                     .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
             }
             Spacer()
-            
-            // Gunluk motivasyon butonu
-            Button {
-                showMotivationTip = true
-            } label: {
-                Image(systemName: "lightbulb.fill")
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
-                    .frame(width: 40, height: 40)
-                    .background(Color(red: 1.00, green: 0.74, blue: 0.38).opacity(0.15))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Gunluk ipucu")
-            
             Button {
                 onLogout() // Cikis yap.
             } label: {
@@ -202,6 +152,8 @@ private extension HomeView {
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.12))
                     .clipShape(Circle())
+                    // Baseline yerine ikonun merkezini hizala.
+                    .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Cikis")
@@ -340,14 +292,11 @@ private extension HomeView {
                     .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 Spacer()
-                Button {
-                    showAllVideos = true
-                } label: {
-                    Text("Hepsini gor")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                }
-                .buttonStyle(.plain)
+                Text("Hepsini gor")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                    // Baseline'i hizalamak icin hafif asagi cekiyoruz.
+                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] + 2 }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -371,19 +320,14 @@ private extension HomeView {
                 .foregroundColor(.white)
 
             VStack(spacing: HomeDesign.insetLarge - 4) {
-                ForEach(Array(quickActionItems.enumerated()), id: \.element.id) { index, action in
+                ForEach(quickActionItems) { action in
                     ActionRow(
                         icon: action.icon,
                         title: action.title,
                         subtitle: action.subtitle,
                         accent: action.accent
                     ) {
-                        if index == 0 {
-                            // Nefes egzersizi - ozel sheet ac
-                            showBreathingExercise = true
-                        } else {
-                            activeAction = action
-                        }
+                        activeAction = action // Hangi eyleme tiklandiysa sheet ac.
                     }
                 }
             }
@@ -412,6 +356,294 @@ private extension HomeView {
         }
     }
 
+    var weeklyCalendar: some View {
+        // Haftalik basari takvimi: son 7 gunun takibi.
+        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
+            HStack {
+                Text("Haftalik Takvim")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Text("\(weeklyDays.filter { $0.isSuccess }.count)/7 gun")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Color(red: 0.36, green: 0.84, blue: 0.65))
+            }
+
+            HStack(spacing: HomeDesign.insetSmall) {
+                ForEach(weeklyDays) { day in
+                    VStack(spacing: HomeDesign.insetSmall - 2) {
+                        Text(day.dayName)
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+
+                        ZStack {
+                            Circle()
+                                .fill(day.isToday ?
+                                    Color(red: 1.00, green: 0.54, blue: 0.24).opacity(0.3) :
+                                    Color.white.opacity(HomeDesign.fillOpacity))
+                                .frame(width: 38, height: 38)
+
+                            if day.isSuccess {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color(red: 0.36, green: 0.84, blue: 0.65))
+                            } else if day.isToday {
+                                Circle()
+                                    .fill(Color(red: 1.00, green: 0.54, blue: 0.24))
+                                    .frame(width: 8, height: 8)
+                            } else {
+                                Text("\(day.dayNumber)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(Color.white.opacity(HomeDesign.textTertiaryOpacity))
+                            }
+                        }
+                        .overlay(
+                            Circle()
+                                .stroke(day.isToday ?
+                                    Color(red: 1.00, green: 0.54, blue: 0.24) :
+                                    Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
+                        )
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(HomeDesign.insetLarge)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .overlay(
+                RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
+                    .stroke(Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
+        }
+    }
+
+    var healthTimeline: some View {
+        // Saglik iyilesme zaman cizelgesi.
+        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
+            HStack {
+                Text("Saglik Iyilesmesi")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Image(systemName: "heart.fill")
+                    .foregroundColor(Color(red: 0.95, green: 0.36, blue: 0.42))
+                    .font(.subheadline)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(healthMilestones.enumerated()), id: \.element.id) { index, milestone in
+                    HStack(alignment: .top, spacing: HomeDesign.insetLarge - 4) {
+                        // Zaman cizgisi noktasi ve cizgi.
+                        VStack(spacing: 0) {
+                            Circle()
+                                .fill(milestone.isAchieved ?
+                                    Color(red: 0.36, green: 0.84, blue: 0.65) :
+                                    Color.white.opacity(0.3))
+                                .frame(width: 14, height: 14)
+                                .overlay(
+                                    Circle()
+                                        .stroke(milestone.isAchieved ?
+                                            Color(red: 0.36, green: 0.84, blue: 0.65).opacity(0.5) :
+                                            Color.clear, lineWidth: 3)
+                                )
+
+                            if index < healthMilestones.count - 1 {
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(width: 2)
+                                    .frame(height: 50)
+                            }
+                        }
+
+                        // Milestone bilgisi.
+                        VStack(alignment: .leading, spacing: HomeDesign.insetSmall - 2) {
+                            HStack {
+                                Text(milestone.time)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(milestone.isAchieved ?
+                                        Color(red: 0.36, green: 0.84, blue: 0.65) :
+                                        Color.white.opacity(HomeDesign.textSecondaryOpacity))
+
+                                if milestone.isAchieved {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(Color(red: 0.36, green: 0.84, blue: 0.65))
+                                }
+                            }
+
+                            Text(milestone.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.white)
+
+                            Text(milestone.description)
+                                .font(.caption)
+                                .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.bottom, index < healthMilestones.count - 1 ? HomeDesign.insetLarge : 0)
+
+                        Spacer()
+                    }
+                }
+            }
+            .padding(HomeDesign.insetLarge)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .overlay(
+                RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
+                    .stroke(Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
+        }
+    }
+
+    var achievementBadges: some View {
+        // Basari rozetleri bolumu.
+        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
+            HStack {
+                Text("Basari Rozetleri")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Text("\(badges.filter { $0.isUnlocked }.count)/\(badges.count)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: HomeDesign.insetMedium) {
+                    ForEach(badges) { badge in
+                        VStack(spacing: HomeDesign.insetSmall) {
+                            ZStack {
+                                Circle()
+                                    .fill(badge.isUnlocked ?
+                                        badge.color.opacity(0.25) :
+                                        Color.white.opacity(HomeDesign.fillOpacity))
+                                    .frame(width: 60, height: 60)
+
+                                Image(systemName: badge.icon)
+                                    .font(.title2.weight(.bold))
+                                    .foregroundColor(badge.isUnlocked ?
+                                        badge.color : Color.white.opacity(0.3))
+
+                                if !badge.isUnlocked {
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(Color.white.opacity(0.5))
+                                        .offset(x: 18, y: 18)
+                                }
+                            }
+                            .overlay(
+                                Circle()
+                                    .stroke(badge.isUnlocked ?
+                                        badge.color.opacity(0.5) :
+                                        Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 2)
+                            )
+
+                            Text(badge.title)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(badge.isUnlocked ?
+                                    .white : Color.white.opacity(HomeDesign.textTertiaryOpacity))
+                                .multilineTextAlignment(.center)
+                                .frame(width: 70)
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .padding(HomeDesign.insetLarge)
+            .background(Color.white.opacity(HomeDesign.fillOpacity))
+            .overlay(
+                RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
+                    .stroke(Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
+        }
+    }
+
+    var motivationCard: some View {
+        // Gunluk motivasyon karti.
+        let quote = motivationQuotes.randomElement() ?? motivationQuotes[0]
+        return VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
+            HStack {
+                Image(systemName: "quote.opening")
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(Color(red: 1.00, green: 0.54, blue: 0.24))
+                Spacer()
+                Image(systemName: "sparkles")
+                    .font(.headline)
+                    .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
+            }
+
+            Text(quote.text)
+                .font(.title3.weight(.semibold))
+                .foregroundColor(.white)
+                .italic()
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Text("— \(quote.author)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                Spacer()
+                Button {
+                    // Paylasim islemi.
+                } label: {
+                    HStack(spacing: HomeDesign.insetSmall - 2) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Paylas")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
+                    .padding(.horizontal, HomeDesign.insetMedium)
+                    .padding(.vertical, HomeDesign.insetSmall)
+                    .background(Color.white.opacity(HomeDesign.fillOpacity))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(HomeDesign.insetXL)
+        .background(
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.14, green: 0.18, blue: 0.32),
+                        Color(red: 0.09, green: 0.12, blue: 0.24)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                // Dekoratif elementler.
+                Circle()
+                    .fill(Color(red: 1.00, green: 0.54, blue: 0.24).opacity(0.15))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 40)
+                    .offset(x: -80, y: -60)
+
+                Circle()
+                    .fill(Color(red: 0.36, green: 0.84, blue: 0.65).opacity(0.12))
+                    .frame(width: 100, height: 100)
+                    .blur(radius: 35)
+                    .offset(x: 100, y: 40)
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.2),
+                            Color.white.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
+        .shadow(color: HomeDesign.shadowColor, radius: HomeDesign.shadowRadius, x: 0, y: HomeDesign.shadowY)
+    }
+
     func labelPill(text: String) -> some View {
         // Kucuk bilgi kapsulu.
         Text(text)
@@ -421,185 +653,6 @@ private extension HomeView {
             .padding(.vertical, HomeDesign.insetSmall)
             .background(Color.white.opacity(HomeDesign.fillOpacity))
             .clipShape(Capsule())
-    }
-
-    // MARK: - Basari Rozetleri
-    var achievementsSection: some View {
-        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Basarilarim")
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(.white)
-                Spacer()
-                Button {
-                    showAllAchievements = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("\(achievementItems.filter { $0.isUnlocked }.count)/\(achievementItems.count)")
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                }
-                .buttonStyle(.plain)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: HomeDesign.insetLarge - 2) {
-                    ForEach(achievementItems) { achievement in
-                        AchievementCard(achievement: achievement) {
-                            activeAchievement = achievement
-                        }
-                    }
-                }
-                .padding(.horizontal, 2)
-            }
-        }
-    }
-
-    // MARK: - Saglik Iyilesmeleri Timeline
-    var healthTimelineSection: some View {
-        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
-            Text("Saglik Iyilesmelerin")
-                .font(.headline.weight(.bold))
-                .foregroundColor(.white)
-
-            VStack(spacing: HomeDesign.insetMedium) {
-                ForEach(healthMilestones) { milestone in
-                    HealthTimelineCard(milestone: milestone) {
-                        activeHealthMilestone = milestone
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Gunluk Gorevler
-    var dailyMissionsSection: some View {
-        let totalXP = dailyMissions.reduce(0) { sum, mission in
-            completedMissions.contains(mission.id.uuidString) ? sum + mission.xp : sum
-        }
-        let maxXP = dailyMissions.reduce(0) { $0 + $1.xp }
-        
-        return VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
-            HStack {
-                Text("Gunluk Gorevler")
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(.white)
-                Spacer()
-                
-                // XP gostergesi
-                HStack(spacing: 6) {
-                    Image(systemName: "star.fill")
-                        .font(.caption)
-                        .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
-                    Text("\(totalXP)/\(maxXP) XP")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, HomeDesign.insetMedium)
-                .padding(.vertical, HomeDesign.insetSmall - 2)
-                .background(
-                    Capsule()
-                        .fill(Color(red: 1.00, green: 0.74, blue: 0.38).opacity(0.2))
-                )
-                
-                Text("\(completedMissions.count)/\(dailyMissions.count)")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, HomeDesign.insetMedium)
-                    .padding(.vertical, HomeDesign.insetSmall - 2)
-                    .background(
-                        Capsule()
-                            .fill(Color(red: 0.36, green: 0.84, blue: 0.65).opacity(0.3))
-                    )
-            }
-
-            VStack(spacing: HomeDesign.insetMedium - 2) {
-                ForEach(dailyMissions) { mission in
-                    MissionCard(
-                        mission: mission,
-                        isCompleted: completedMissions.contains(mission.id.uuidString)
-                    ) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            if completedMissions.contains(mission.id.uuidString) {
-                                completedMissions.remove(mission.id.uuidString)
-                            } else {
-                                completedMissions.insert(mission.id.uuidString)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Tum gorevler tamamlaninca tebrik
-            if completedMissions.count == dailyMissions.count {
-                HStack {
-                    Image(systemName: "party.popper.fill")
-                        .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
-                    Text("Tebrikler! Bugunun tum gorevlerini tamamladin!")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.white)
-                }
-                .padding(HomeDesign.insetMedium)
-                .frame(maxWidth: .infinity)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 1.00, green: 0.74, blue: 0.38).opacity(0.2),
-                            Color(red: 0.36, green: 0.84, blue: 0.65).opacity(0.2)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
-    }
-
-    // MARK: - Haftalik Ilerleme
-    var weeklyProgressSection: some View {
-        VStack(alignment: .leading, spacing: HomeDesign.insetLarge - 4) {
-            Text("Haftalik Ilerleme")
-                .font(.headline.weight(.bold))
-                .foregroundColor(.white)
-
-            VStack(spacing: HomeDesign.insetMedium) {
-                // Haftalik grafik
-                HStack(spacing: HomeDesign.insetSmall) {
-                    ForEach(weeklyData, id: \.day) { data in
-                        WeekDayBar(data: data)
-                    }
-                }
-                .padding(.vertical, HomeDesign.insetMedium)
-                .padding(.horizontal, HomeDesign.insetLarge - 4)
-                .background(Color.white.opacity(HomeDesign.fillOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
-                        .stroke(Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
-
-                // Ozet istatistikleri
-                HStack(spacing: HomeDesign.insetMedium) {
-                    WeeklySummaryCard(
-                        title: "Toplam Tasarruf",
-                        value: "595 TL",
-                        icon: "turkishlirasign.circle.fill",
-                        color: Color(red: 0.36, green: 0.84, blue: 0.65)
-                    )
-                    WeeklySummaryCard(
-                        title: "Dumansiz Gun",
-                        value: "7 gun",
-                        icon: "calendar.badge.checkmark",
-                        color: Color(red: 0.99, green: 0.52, blue: 0.28)
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -940,975 +993,6 @@ private struct AudioSheetView: View {
     }
 }
 
-// MARK: - Yeni Bolum Kartlari
-
-// Basari rozeti karti.
-private struct AchievementCard: View {
-    let achievement: Achievement
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: HomeDesign.insetSmall) {
-                ZStack {
-                    Circle()
-                        .fill(achievement.isUnlocked ? achievement.color.opacity(0.25) : Color.white.opacity(0.08))
-                        .frame(width: 60, height: 60)
-
-                    // Ilerleme halkasi
-                    Circle()
-                        .trim(from: 0, to: achievement.progress)
-                        .stroke(
-                            achievement.isUnlocked ? achievement.color : achievement.color.opacity(0.5),
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                        )
-                        .frame(width: 60, height: 60)
-                        .rotationEffect(.degrees(-90))
-
-                    Image(systemName: achievement.icon)
-                        .font(.title2.weight(.bold))
-                        .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.4))
-                }
-
-                Text(achievement.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.5))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(width: 80)
-            }
-            .padding(.vertical, HomeDesign.insetMedium)
-            .padding(.horizontal, HomeDesign.insetSmall)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// Saglik timeline karti.
-private struct HealthTimelineCard: View {
-    let milestone: HealthMilestone
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: HomeDesign.insetLarge - 2) {
-                // Zaman etiketi
-                VStack {
-                    Text(milestone.timeLabel)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(milestone.isReached ? .white : Color.white.opacity(0.5))
-                }
-                .frame(width: 50)
-
-                // Timeline cizgisi ve nokta
-                VStack(spacing: 0) {
-                    Circle()
-                        .fill(milestone.isReached ? milestone.color : Color.white.opacity(0.2))
-                        .frame(width: 14, height: 14)
-                        .overlay(
-                            Circle()
-                                .stroke(milestone.color.opacity(0.5), lineWidth: milestone.isReached ? 3 : 0)
-                                .frame(width: 20, height: 20)
-                        )
-                }
-
-                // Icerik
-                VStack(alignment: .leading, spacing: HomeDesign.insetSmall - 4) {
-                    HStack {
-                        Image(systemName: milestone.icon)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundColor(milestone.isReached ? milestone.color : Color.white.opacity(0.4))
-
-                        Text(milestone.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(milestone.isReached ? .white : Color.white.opacity(0.5))
-                    }
-
-                    Text(milestone.description)
-                        .font(.caption)
-                        .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                        .lineLimit(2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Durum ikonu
-                Image(systemName: milestone.isReached ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(milestone.isReached ? milestone.color : Color.white.opacity(0.3))
-                    .font(.headline)
-            }
-            .padding(HomeDesign.insetLarge - 2)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .overlay(
-                RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
-                    .stroke(milestone.isReached ? milestone.color.opacity(0.3) : Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// Gunluk gorev karti.
-private struct MissionCard: View {
-    let mission: DailyMission
-    let isCompleted: Bool
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: HomeDesign.insetMedium) {
-                // Checkbox
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isCompleted ? mission.color : Color.white.opacity(0.08))
-                        .frame(width: 28, height: 28)
-
-                    if isCompleted {
-                        Image(systemName: "checkmark")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(.white)
-                    }
-                }
-
-                // Icon
-                Image(systemName: mission.icon)
-                    .font(.headline)
-                    .foregroundColor(isCompleted ? mission.color : Color.white.opacity(0.6))
-                    .frame(width: 24)
-
-                // Baslik
-                Text(mission.title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(isCompleted ? Color.white.opacity(0.5) : .white)
-                    .strikethrough(isCompleted, color: Color.white.opacity(0.3))
-
-                Spacer()
-
-                // XP
-                Text("+\(mission.xp) XP")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(isCompleted ? mission.color : Color.white.opacity(0.6))
-                    .padding(.horizontal, HomeDesign.insetSmall)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(isCompleted ? mission.color.opacity(0.2) : Color.white.opacity(0.08))
-                    )
-            }
-            .padding(.horizontal, HomeDesign.insetLarge - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .overlay(
-                RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous)
-                    .stroke(isCompleted ? mission.color.opacity(0.3) : Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// Haftalik gun cubugu.
-private struct WeekDayBar: View {
-    let data: WeekDayData
-
-    var body: some View {
-        VStack(spacing: HomeDesign.insetSmall - 2) {
-            // Cubuk
-            ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 28, height: 80)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(
-                        data.isToday ?
-                        LinearGradient(
-                            colors: [Color(red: 0.99, green: 0.52, blue: 0.28), Color(red: 0.98, green: 0.31, blue: 0.29)],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        ) :
-                        LinearGradient(
-                            colors: [Color(red: 0.36, green: 0.84, blue: 0.65), Color(red: 0.35, green: 0.75, blue: 1.00)],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .frame(width: 28, height: CGFloat(data.value * 80))
-            }
-
-            // Gun etiketi
-            Text(data.day)
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(data.isToday ? .white : Color.white.opacity(0.6))
-        }
-    }
-}
-
-// Haftalik ozet karti.
-private struct WeeklySummaryCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: HomeDesign.insetSmall) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                    .font(.headline)
-                Spacer()
-            }
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-            Text(value)
-                .font(.title3.weight(.bold))
-                .foregroundColor(.white)
-        }
-        .padding(HomeDesign.insetLarge - 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(HomeDesign.fillOpacity))
-        .overlay(
-            RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
-                .stroke(Color.white.opacity(HomeDesign.strokeOpacity), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
-    }
-}
-
-// Basari rozeti sheet.
-private struct AchievementSheetView: View {
-    let achievement: Achievement
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: HomeDesign.insetLarge) {
-            Capsule()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 48, height: 6)
-
-            ZStack {
-                Circle()
-                    .fill(achievement.color.opacity(0.2))
-                    .frame(width: 100, height: 100)
-
-                Circle()
-                    .trim(from: 0, to: achievement.progress)
-                    .stroke(achievement.color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .frame(width: 100, height: 100)
-                    .rotationEffect(.degrees(-90))
-
-                Image(systemName: achievement.icon)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.4))
-            }
-
-            Text(achievement.title)
-                .font(.title2.weight(.bold))
-                .foregroundColor(.white)
-
-            Text(achievement.description)
-                .font(.body)
-                .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            // Ilerleme gostergesi
-            VStack(spacing: HomeDesign.insetSmall) {
-                HStack {
-                    Text("Ilerleme")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                    Spacer()
-                    Text("\(Int(achievement.progress * 100))%")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(achievement.color)
-                }
-                ProgressView(value: achievement.progress)
-                    .tint(achievement.color)
-            }
-            .padding(.horizontal, HomeDesign.insetXL)
-
-            if achievement.isUnlocked {
-                HStack {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundColor(achievement.color)
-                    Text("Kazanildi!")
-                        .font(.headline.weight(.semibold))
-                        .foregroundColor(achievement.color)
-                }
-                .padding(.vertical, HomeDesign.insetMedium)
-                .padding(.horizontal, HomeDesign.insetXL)
-                .background(achievement.color.opacity(0.15))
-                .clipShape(Capsule())
-            }
-
-            Button("Kapat") {
-                dismiss()
-            }
-            .font(.headline.weight(.semibold))
-            .padding(.horizontal, HomeDesign.insetXL - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            .foregroundColor(.white)
-
-            Spacer()
-        }
-        .padding(.top, HomeDesign.insetMedium)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.20),
-                    Color(red: 0.04, green: 0.06, blue: 0.13)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-    }
-}
-
-// Saglik iyilesmesi sheet.
-private struct HealthMilestoneSheetView: View {
-    let milestone: HealthMilestone
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: HomeDesign.insetLarge) {
-            Capsule()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 48, height: 6)
-
-            ZStack {
-                Circle()
-                    .fill(milestone.color.opacity(0.2))
-                    .frame(width: 90, height: 90)
-
-                Image(systemName: milestone.icon)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(milestone.isReached ? milestone.color : Color.white.opacity(0.4))
-            }
-
-            Text(milestone.timeLabel)
-                .font(.caption.weight(.bold))
-                .foregroundColor(milestone.color)
-                .padding(.horizontal, HomeDesign.insetMedium)
-                .padding(.vertical, HomeDesign.insetSmall - 2)
-                .background(milestone.color.opacity(0.15))
-                .clipShape(Capsule())
-
-            Text(milestone.title)
-                .font(.title2.weight(.bold))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-
-            Text(milestone.description)
-                .font(.body)
-                .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            if milestone.isReached {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(milestone.color)
-                    Text("Bu asamaya ulastin!")
-                        .font(.headline.weight(.semibold))
-                        .foregroundColor(.white)
-                }
-                .padding(.vertical, HomeDesign.insetMedium)
-                .padding(.horizontal, HomeDesign.insetXL)
-                .background(milestone.color.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            } else {
-                Text("Biraz daha sabret, yaklasiyorsun!")
-                    .font(.subheadline)
-                    .foregroundColor(Color.white.opacity(0.6))
-                    .italic()
-            }
-
-            Button("Kapat") {
-                dismiss()
-            }
-            .font(.headline.weight(.semibold))
-            .padding(.horizontal, HomeDesign.insetXL - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            .foregroundColor(.white)
-
-            Spacer()
-        }
-        .padding(.top, HomeDesign.insetMedium)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.20),
-                    Color(red: 0.04, green: 0.06, blue: 0.13)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-    }
-}
-
-// MARK: - Nefes Egzersizi Sheet
-private struct BreathingExerciseSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var phase: BreathPhase = .ready
-    @State private var currentRound = 0
-    @State private var circleScale: CGFloat = 0.6
-    @State private var timer: Timer?
-    
-    enum BreathPhase: String {
-        case ready = "Hazir misin?"
-        case inhale = "Nefes Al"
-        case hold = "Tut"
-        case exhale = "Nefes Ver"
-        case complete = "Tamamlandi!"
-    }
-    
-    let totalRounds = 5
-    let inhaleDuration: Double = 3
-    let holdDuration: Double = 4
-    let exhaleDuration: Double = 5
-    
-    var body: some View {
-        VStack(spacing: HomeDesign.insetXL) {
-            Capsule()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 48, height: 6)
-            
-            Text("Nefes Egzersizi")
-                .font(.title2.weight(.bold))
-                .foregroundColor(.white)
-            
-            Text("3-4-5 Teknigi")
-                .font(.subheadline)
-                .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-            
-            Spacer()
-            
-            // Nefes animasyon dairesi
-            ZStack {
-                // Dis halka
-                Circle()
-                    .stroke(Color.white.opacity(0.1), lineWidth: 8)
-                    .frame(width: 200, height: 200)
-                
-                // Animasyonlu ic daire
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                phaseColor.opacity(0.6),
-                                phaseColor.opacity(0.2)
-                            ],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 100
-                        )
-                    )
-                    .frame(width: 200, height: 200)
-                    .scaleEffect(circleScale)
-                
-                // Faz yazisi
-                VStack(spacing: 8) {
-                    Text(phase.rawValue)
-                        .font(.title3.weight(.bold))
-                        .foregroundColor(.white)
-                    
-                    if phase != .ready && phase != .complete {
-                        Text("Tur \(currentRound)/\(totalRounds)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(Color.white.opacity(0.7))
-                    }
-                }
-            }
-            
-            Spacer()
-            
-            // Kontrol butonlari
-            if phase == .ready {
-                Button {
-                    startExercise()
-                } label: {
-                    HStack {
-                        Image(systemName: "play.fill")
-                        Text("Baslat")
-                    }
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, HomeDesign.insetMedium)
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.36, green: 0.84, blue: 0.65),
-                                Color(red: 0.35, green: 0.75, blue: 1.00)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            } else if phase == .complete {
-                VStack(spacing: HomeDesign.insetMedium) {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(Color(red: 0.36, green: 0.84, blue: 0.65))
-                        Text("Harika! Kendini daha iyi hissedeceksin.")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.white)
-                    }
-                    
-                    Button {
-                        phase = .ready
-                        currentRound = 0
-                        circleScale = 0.6
-                    } label: {
-                        Text("Tekrar Yap")
-                            .font(.headline.weight(.semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, HomeDesign.insetMedium)
-                            .background(Color.white.opacity(HomeDesign.fillOpacity))
-                            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            
-            Button("Kapat") {
-                timer?.invalidate()
-                dismiss()
-            }
-            .font(.headline.weight(.semibold))
-            .padding(.horizontal, HomeDesign.insetXL - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            .foregroundColor(.white)
-        }
-        .padding(HomeDesign.insetXL)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.20),
-                    Color(red: 0.04, green: 0.06, blue: 0.13)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-        .onDisappear {
-            timer?.invalidate()
-        }
-    }
-    
-    var phaseColor: Color {
-        switch phase {
-        case .ready: return Color(red: 0.35, green: 0.75, blue: 1.00)
-        case .inhale: return Color(red: 0.36, green: 0.84, blue: 0.65)
-        case .hold: return Color(red: 1.00, green: 0.74, blue: 0.38)
-        case .exhale: return Color(red: 0.99, green: 0.52, blue: 0.28)
-        case .complete: return Color(red: 0.36, green: 0.84, blue: 0.65)
-        }
-    }
-    
-    func startExercise() {
-        currentRound = 1
-        runBreathCycle()
-    }
-    
-    func runBreathCycle() {
-        // Nefes al
-        phase = .inhale
-        withAnimation(.easeInOut(duration: inhaleDuration)) {
-            circleScale = 1.0
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + inhaleDuration) {
-            // Tut
-            phase = .hold
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration) {
-                // Nefes ver
-                phase = .exhale
-                withAnimation(.easeInOut(duration: exhaleDuration)) {
-                    circleScale = 0.6
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + exhaleDuration) {
-                    if currentRound < totalRounds {
-                        currentRound += 1
-                        runBreathCycle()
-                    } else {
-                        phase = .complete
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Tum Videolar Sheet
-private struct AllVideosSheet: View {
-    let clips: [Clip]
-    var onSelectClip: (Clip) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        VStack(spacing: HomeDesign.insetLarge) {
-            Capsule()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 48, height: 6)
-            
-            HStack {
-                Text("Tum Videolar")
-                    .font(.title2.weight(.bold))
-                    .foregroundColor(.white)
-                Spacer()
-                Text("\(clips.count) video")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-            }
-            .padding(.horizontal)
-            
-            ScrollView {
-                LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: HomeDesign.insetMedium),
-                    GridItem(.flexible(), spacing: HomeDesign.insetMedium)
-                ], spacing: HomeDesign.insetMedium) {
-                    ForEach(clips) { clip in
-                        Button {
-                            onSelectClip(clip)
-                        } label: {
-                            VStack(alignment: .leading, spacing: HomeDesign.insetSmall) {
-                                RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: clip.gradient,
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(height: 100)
-                                    .overlay(
-                                        VStack {
-                                            Image(systemName: "play.circle.fill")
-                                                .font(.title.weight(.bold))
-                                                .foregroundColor(.white)
-                                            Text(clip.duration)
-                                                .font(.caption2.weight(.bold))
-                                                .foregroundColor(.white)
-                                        }
-                                    )
-                                
-                                Text(clip.title)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(2)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal)
-            }
-            
-            Button("Kapat") {
-                dismiss()
-            }
-            .font(.headline.weight(.semibold))
-            .padding(.horizontal, HomeDesign.insetXL - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            .foregroundColor(.white)
-        }
-        .padding(.top, HomeDesign.insetMedium)
-        .padding(.bottom, HomeDesign.insetXL)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.20),
-                    Color(red: 0.04, green: 0.06, blue: 0.13)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-    }
-}
-
-// MARK: - Tum Basarilar Sheet
-private struct AllAchievementsSheet: View {
-    let achievements: [Achievement]
-    var onSelectAchievement: (Achievement) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    var unlockedCount: Int {
-        achievements.filter { $0.isUnlocked }.count
-    }
-    
-    var body: some View {
-        VStack(spacing: HomeDesign.insetLarge) {
-            Capsule()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 48, height: 6)
-            
-            HStack {
-                Text("Basarilarim")
-                    .font(.title2.weight(.bold))
-                    .foregroundColor(.white)
-                Spacer()
-                HStack(spacing: 4) {
-                    Image(systemName: "trophy.fill")
-                        .foregroundColor(Color(red: 1.00, green: 0.74, blue: 0.38))
-                    Text("\(unlockedCount)/\(achievements.count)")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.white)
-                }
-            }
-            .padding(.horizontal)
-            
-            // Ilerleme cubugu
-            VStack(alignment: .leading, spacing: HomeDesign.insetSmall) {
-                ProgressView(value: Double(unlockedCount), total: Double(achievements.count))
-                    .tint(Color(red: 1.00, green: 0.74, blue: 0.38))
-                Text("%\(Int(Double(unlockedCount) / Double(achievements.count) * 100)) tamamlandi")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-            }
-            .padding(.horizontal)
-            
-            ScrollView {
-                VStack(spacing: HomeDesign.insetMedium) {
-                    ForEach(achievements) { achievement in
-                        Button {
-                            onSelectAchievement(achievement)
-                        } label: {
-                            HStack(spacing: HomeDesign.insetMedium) {
-                                ZStack {
-                                    Circle()
-                                        .fill(achievement.isUnlocked ? achievement.color.opacity(0.25) : Color.white.opacity(0.08))
-                                        .frame(width: 50, height: 50)
-                                    
-                                    Image(systemName: achievement.icon)
-                                        .font(.title3.weight(.bold))
-                                        .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.4))
-                                }
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(achievement.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(achievement.isUnlocked ? .white : Color.white.opacity(0.5))
-                                    
-                                    Text(achievement.description)
-                                        .font(.caption)
-                                        .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                                        .lineLimit(2)
-                                    
-                                    // Mini ilerleme cubugu
-                                    ProgressView(value: achievement.progress)
-                                        .tint(achievement.color)
-                                }
-                                
-                                Spacer()
-                                
-                                if achievement.isUnlocked {
-                                    Image(systemName: "checkmark.seal.fill")
-                                        .foregroundColor(achievement.color)
-                                        .font(.title3)
-                                } else {
-                                    Text("%\(Int(achievement.progress * 100))")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundColor(Color.white.opacity(0.5))
-                                }
-                            }
-                            .padding(HomeDesign.insetMedium)
-                            .background(Color.white.opacity(HomeDesign.fillOpacity))
-                            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal)
-            }
-            
-            Button("Kapat") {
-                dismiss()
-            }
-            .font(.headline.weight(.semibold))
-            .padding(.horizontal, HomeDesign.insetXL - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            .foregroundColor(.white)
-        }
-        .padding(.top, HomeDesign.insetMedium)
-        .padding(.bottom, HomeDesign.insetXL)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.20),
-                    Color(red: 0.04, green: 0.06, blue: 0.13)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-    }
-}
-
-// MARK: - Gunluk Motivasyon Sheet
-private struct DailyMotivationSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var currentTipIndex = 0
-    
-    let tips = [
-        (icon: "flame.fill", title: "Kraving 90 saniye surer", message: "Sigara istegi bir dalga gibi gelir ve gecer. Su ic, derin nefes al ve dalganin gecmesini izle. Yapabilirsin!", color: Color(red: 0.99, green: 0.52, blue: 0.28)),
-        (icon: "heart.fill", title: "Vucudun iyilesiyor", message: "Her sigara icmedigin dakika vucudun kendini onariyor. 20 dakikada kan basincin normale doner!", color: Color(red: 0.99, green: 0.52, blue: 0.28)),
-        (icon: "banknote.fill", title: "Cebinde para kaliyor", message: "Her paket almadığinda ortalama 100 TL tasarruf ediyorsun. Ayda 3000 TL'ye kadar biriktirebilirsin!", color: Color(red: 0.36, green: 0.84, blue: 0.65)),
-        (icon: "lungs.fill", title: "Nefes al, rahatla", message: "Stresli hissettiginde 3-4-5 tekniğini dene: 3 sn nefes al, 4 sn tut, 5 sn ver. 5 kez tekrarla.", color: Color(red: 0.35, green: 0.75, blue: 1.00)),
-        (icon: "figure.walk", title: "Hareket et", message: "Sigara istegi geldiginde 5 dakika yuru. Fiziksel aktivite beyindeki odul merkezini uyarir ve istegi azaltir.", color: Color(red: 0.80, green: 0.68, blue: 1.00))
-    ]
-    
-    var currentTip: (icon: String, title: String, message: String, color: Color) {
-        tips[currentTipIndex]
-    }
-    
-    var body: some View {
-        VStack(spacing: HomeDesign.insetXL) {
-            Capsule()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 48, height: 6)
-            
-            Text("Gunun Ipucu")
-                .font(.title2.weight(.bold))
-                .foregroundColor(.white)
-            
-            Spacer()
-            
-            // Ipucu karti
-            VStack(spacing: HomeDesign.insetLarge) {
-                ZStack {
-                    Circle()
-                        .fill(currentTip.color.opacity(0.2))
-                        .frame(width: 80, height: 80)
-                    
-                    Image(systemName: currentTip.icon)
-                        .font(.system(size: 36, weight: .bold))
-                        .foregroundColor(currentTip.color)
-                }
-                
-                Text(currentTip.title)
-                    .font(.title3.weight(.bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                
-                Text(currentTip.message)
-                    .font(.body)
-                    .foregroundColor(Color.white.opacity(HomeDesign.textSecondaryOpacity))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            .padding(HomeDesign.insetXL)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: HomeDesign.radiusCard, style: .continuous)
-                    .stroke(currentTip.color.opacity(0.3), lineWidth: 1)
-            )
-            
-            // Ipucu navigasyonu
-            HStack(spacing: HomeDesign.insetSmall) {
-                ForEach(0..<tips.count, id: \.self) { index in
-                    Circle()
-                        .fill(index == currentTipIndex ? currentTip.color : Color.white.opacity(0.3))
-                        .frame(width: 8, height: 8)
-                }
-            }
-            
-            HStack(spacing: HomeDesign.insetMedium) {
-                Button {
-                    withAnimation {
-                        currentTipIndex = (currentTipIndex - 1 + tips.count) % tips.count
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(HomeDesign.fillOpacity))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                
-                Button {
-                    withAnimation {
-                        currentTipIndex = (currentTipIndex + 1) % tips.count
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(HomeDesign.fillOpacity))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            
-            Spacer()
-            
-            Button("Kapat") {
-                dismiss()
-            }
-            .font(.headline.weight(.semibold))
-            .padding(.horizontal, HomeDesign.insetXL - 4)
-            .padding(.vertical, HomeDesign.insetMedium)
-            .background(Color.white.opacity(HomeDesign.fillOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: HomeDesign.radiusButton, style: .continuous))
-            .foregroundColor(.white)
-        }
-        .padding(HomeDesign.insetXL)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.20),
-                    Color(red: 0.04, green: 0.06, blue: 0.13)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-        .onAppear {
-            // Her acilista rastgele bir ipucu goster
-            currentTipIndex = Int.random(in: 0..<tips.count)
-        }
-    }
-}
-
 // MARK: - Model
 private struct QuickAction: Identifiable {
     let id = UUID()
@@ -1933,44 +1017,6 @@ private struct Clip: Identifiable {
     let title: String
     let duration: String
     let gradient: [Color]
-}
-
-// Basari rozeti modeli.
-private struct Achievement: Identifiable {
-    let id = UUID()
-    let title: String
-    let description: String
-    let icon: String
-    let color: Color
-    let isUnlocked: Bool
-    let progress: Double // 0-1 arasi
-}
-
-// Saglik iyilesmesi modeli.
-private struct HealthMilestone: Identifiable {
-    let id = UUID()
-    let timeLabel: String // "20 dk", "8 saat", "24 saat" gibi
-    let title: String
-    let description: String
-    let icon: String
-    let color: Color
-    let isReached: Bool
-}
-
-// Gunluk gorev modeli.
-private struct DailyMission: Identifiable {
-    let id = UUID()
-    let title: String
-    let xp: Int
-    let icon: String
-    let color: Color
-}
-
-// Haftalik veri modeli.
-private struct WeekDayData {
-    let day: String
-    let value: Double // 0-1 arasi
-    let isToday: Bool
 }
 
 // Hizli eylem listesi.
@@ -2067,121 +1113,139 @@ private let sampleClips: [Clip] = [
     )
 ]
 
-// Basari rozetleri listesi.
-private let achievementItems: [Achievement] = [
-    Achievement(
-        title: "Ilk Adim",
-        description: "Uygulamayi ilk kez actin, yolculuk basladi!",
-        icon: "star.fill",
-        color: Color(red: 1.00, green: 0.74, blue: 0.38),
-        isUnlocked: true,
-        progress: 1.0
-    ),
-    Achievement(
-        title: "1 Gun Sampiyon",
-        description: "24 saat boyunca sigara icmedin. Harika!",
-        icon: "trophy.fill",
-        color: Color(red: 0.36, green: 0.84, blue: 0.65),
-        isUnlocked: true,
-        progress: 1.0
-    ),
-    Achievement(
-        title: "Nefes Ustasi",
-        description: "5 nefes egzersizi tamamla.",
-        icon: "lungs.fill",
-        color: Color(red: 0.35, green: 0.75, blue: 1.00),
-        isUnlocked: false,
-        progress: 0.6
-    ),
-    Achievement(
-        title: "Hafta Kahramani",
-        description: "7 gun ust uste dumansiz kal.",
-        icon: "flame.fill",
-        color: Color(red: 0.99, green: 0.52, blue: 0.28),
-        isUnlocked: false,
-        progress: 0.85
-    ),
-    Achievement(
-        title: "Tasarruf Krali",
-        description: "500 TL tasarruf et.",
-        icon: "banknote.fill",
-        color: Color(red: 0.80, green: 0.68, blue: 1.00),
-        isUnlocked: false,
-        progress: 0.42
-    )
+// MARK: - Haftalik Takvim Modeli
+private struct WeekDay: Identifiable {
+    let id = UUID()
+    let dayName: String
+    let dayNumber: Int
+    let isSuccess: Bool
+    let isToday: Bool
+}
+
+// Haftalik gunler verisi (ornek).
+private let weeklyDays: [WeekDay] = [
+    WeekDay(dayName: "Pzt", dayNumber: 23, isSuccess: true, isToday: false),
+    WeekDay(dayName: "Sal", dayNumber: 24, isSuccess: true, isToday: false),
+    WeekDay(dayName: "Car", dayNumber: 25, isSuccess: true, isToday: false),
+    WeekDay(dayName: "Per", dayNumber: 26, isSuccess: true, isToday: false),
+    WeekDay(dayName: "Cum", dayNumber: 27, isSuccess: true, isToday: false),
+    WeekDay(dayName: "Cmt", dayNumber: 28, isSuccess: false, isToday: false),
+    WeekDay(dayName: "Paz", dayNumber: 29, isSuccess: false, isToday: true)
 ]
 
-// Saglik iyilesmeleri listesi.
+// MARK: - Saglik Iyilesme Modeli
+private struct HealthMilestone: Identifiable {
+    let id = UUID()
+    let time: String
+    let title: String
+    let description: String
+    let isAchieved: Bool
+}
+
+// Saglik iyilesme kilometre taslari.
 private let healthMilestones: [HealthMilestone] = [
     HealthMilestone(
-        timeLabel: "20 dk",
-        title: "Kan basinci normallesir",
-        description: "Kalp ritmin ve kan basincin normale donmeye basladi.",
-        icon: "heart.fill",
-        color: Color(red: 0.99, green: 0.52, blue: 0.28),
-        isReached: true
+        time: "20 dakika",
+        title: "Kalp atisi normallesir",
+        description: "Kalp ritmin ve tansiyon dengeye gelmeye basladi.",
+        isAchieved: true
     ),
     HealthMilestone(
-        timeLabel: "8 saat",
-        title: "Oksijen seviyesi artar",
-        description: "Kanindaki karbonmonoksit azalir, oksijen artar.",
-        icon: "lungs.fill",
-        color: Color(red: 0.35, green: 0.75, blue: 1.00),
-        isReached: true
+        time: "8 saat",
+        title: "Karbon monoksit dusuyor",
+        description: "Kanindaki karbon monoksit seviyesi yarisina indi.",
+        isAchieved: true
     ),
     HealthMilestone(
-        timeLabel: "24 saat",
-        title: "Kalp krizi riski duser",
-        description: "Kalp krizi gecirme riskin azalmaya baslar.",
-        icon: "bolt.heart.fill",
+        time: "24 saat",
+        title: "Kalp krizi riski azaliyor",
+        description: "Kalp krizi riski dusmeye basliyor, damarlar rahatliyor.",
+        isAchieved: false
+    ),
+    HealthMilestone(
+        time: "48 saat",
+        title: "Tat ve koku duyusu",
+        description: "Sinir uclari iyilesiyor, tatlar ve kokular daha belirgin.",
+        isAchieved: false
+    )
+]
+
+// MARK: - Basari Rozeti Modeli
+private struct Badge: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let color: Color
+    let isUnlocked: Bool
+}
+
+// Basari rozetleri listesi.
+private let badges: [Badge] = [
+    Badge(
+        title: "Ilk Gun",
+        icon: "star.fill",
+        color: Color(red: 1.00, green: 0.74, blue: 0.38),
+        isUnlocked: true
+    ),
+    Badge(
+        title: "3 Gun Seri",
+        icon: "flame.fill",
+        color: Color(red: 1.00, green: 0.54, blue: 0.24),
+        isUnlocked: true
+    ),
+    Badge(
+        title: "1 Hafta",
+        icon: "trophy.fill",
         color: Color(red: 0.36, green: 0.84, blue: 0.65),
-        isReached: false
+        isUnlocked: false
     ),
-    HealthMilestone(
-        timeLabel: "48 saat",
-        title: "Tat ve koku duyusu iyilesir",
-        description: "Sinir uclari yenilenmeye baslar, tatlar ve kokular netlenir.",
-        icon: "nose.fill",
+    Badge(
+        title: "Nefes Ustasi",
+        icon: "lungs.fill",
+        color: Color(red: 0.38, green: 0.73, blue: 1.00),
+        isUnlocked: true
+    ),
+    Badge(
+        title: "100 TL Tasarruf",
+        icon: "banknote.fill",
         color: Color(red: 0.80, green: 0.68, blue: 1.00),
-        isReached: false
+        isUnlocked: false
+    ),
+    Badge(
+        title: "30 Gun Efsane",
+        icon: "crown.fill",
+        color: Color(red: 0.95, green: 0.36, blue: 0.42),
+        isUnlocked: false
     )
 ]
 
-// Gunluk gorevler listesi.
-private let dailyMissions: [DailyMission] = [
-    DailyMission(
-        title: "3 bardak su ic",
-        xp: 10,
-        icon: "drop.fill",
-        color: Color(red: 0.35, green: 0.75, blue: 1.00)
-    ),
-    DailyMission(
-        title: "5 dakika nefes egzersizi yap",
-        xp: 20,
-        icon: "wind",
-        color: Color(red: 0.36, green: 0.84, blue: 0.65)
-    ),
-    DailyMission(
-        title: "Kraving gelince yuru",
-        xp: 15,
-        icon: "figure.walk",
-        color: Color(red: 0.99, green: 0.52, blue: 0.28)
-    ),
-    DailyMission(
-        title: "1 motivasyon videosu izle",
-        xp: 10,
-        icon: "play.circle.fill",
-        color: Color(red: 0.80, green: 0.68, blue: 1.00)
-    )
-]
+// MARK: - Motivasyon Sozleri Modeli
+private struct MotivationQuote: Identifiable {
+    let id = UUID()
+    let text: String
+    let author: String
+}
 
-// Haftalik veri.
-private let weeklyData: [WeekDayData] = [
-    WeekDayData(day: "Pzt", value: 1.0, isToday: false),
-    WeekDayData(day: "Sal", value: 0.85, isToday: false),
-    WeekDayData(day: "Car", value: 1.0, isToday: false),
-    WeekDayData(day: "Per", value: 0.7, isToday: false),
-    WeekDayData(day: "Cum", value: 1.0, isToday: false),
-    WeekDayData(day: "Cmt", value: 0.9, isToday: false),
-    WeekDayData(day: "Paz", value: 0.5, isToday: true)
+// Motivasyon sozleri listesi.
+private let motivationQuotes: [MotivationQuote] = [
+    MotivationQuote(
+        text: "Her gun yeni bir baslangic. Bugunku secimin yarin seni ozgur kilacak.",
+        author: "Anonim"
+    ),
+    MotivationQuote(
+        text: "Basari, her gun kucuk adimlar atma cesaretindir.",
+        author: "Leo Babauta"
+    ),
+    MotivationQuote(
+        text: "Vucudun sana tesekkur ediyor. Her nefes bir zafer.",
+        author: "codeks"
+    ),
+    MotivationQuote(
+        text: "Zor olan dogru olandir. Sen zoru basariyorsun.",
+        author: "Theodore Roosevelt"
+    ),
+    MotivationQuote(
+        text: "Bir aliskanligi yenmek icin baska bir aliskanlık olustur: saglik.",
+        author: "James Clear"
+    )
 ]
